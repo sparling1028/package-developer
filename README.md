@@ -1,5 +1,6 @@
 # package-developer
-A python package to automate away the housework of writing a sourceable package or module.
+A python package to automate away the housework of writing a sourceable package or module.  
+You can now write and continuously develop a sourceable module directly from your IDE of choice, without ever opening a script file.
 
 After saving this code somewhere on your python PATH, you will need to change the references to:
 - developer_root
