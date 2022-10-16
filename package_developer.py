@@ -33,7 +33,7 @@ import sys
 import pandas as pd
 
 from pyfiglet import Figlet
-from inspect import getsource
+from inspect import getsource, signature
 from typing import Union
 from importlib import reload
 
@@ -52,6 +52,8 @@ from importlib import reload
 #  |--------------------------------------------------------------------------------------------------------------------------------|
 #  |--------------------------------------------------------------------------------------------------------------------------------|
 #  +--------------------------------------------------------------------------------------------------------------------------------+
+
+pseudo_imported_names = dict()
 
 #  +------------------------------------------------------------------------------------------------------------------------+
 #  |------------------------------------------------------------------------------------------------------------------------|
@@ -419,6 +421,18 @@ def remove_quoted_things(text):
     return text
 
 
+def import_pseudonymously(phrase):
+    d = dict()
+    program = f"""
+    {phrase}
+    for name in get_import_names_from_text('{phrase}'):
+        d[name] = eval(name)
+    """
+    program = dedent_method(program)
+    exec(program, {'d':d, 'get_import_names_from_text': get_import_names_from_text})
+    return d
+
+
 #  +-------------------------------------------------------------------------------------------------------------+
 #  |-------------------------------------------------------------------------------------------------------------|
 #  |-------------------------------------------------------------------------------------------------------------|
@@ -516,7 +530,19 @@ class class_developer:
                 }
 
 
-
+    def construct_pseudo_imported_names(self):
+        global pseudo_imported_names
+        pseudo_imported_names[f'{self.target_module.__name__}.{self.target_class.__name__}'] = dict()
+        for key, value in self.module_attributes().items():
+            pseudo_imported_names[f'{self.target_module.__name__}.{self.target_class.__name__}'][key] = value
+        for key, value in self.module_functions().items():
+            pseudo_imported_names[f'{self.target_module.__name__}.{self.target_class.__name__}'][key] = value
+        for key, value in self.module_classes().items():
+            pseudo_imported_names[f'{self.target_module.__name__}.{self.target_class.__name__}'][key] = value
+        for phrase in self.module_imports().keys():
+            for key, value in import_pseudonymously(phrase).items():
+                pseudo_imported_names[f'{self.target_module.__name__}.{self.target_class.__name__}'][key] = value
+        return None
 
 
 #  +---------------------------------------+
@@ -715,19 +741,15 @@ class class_developer:
 
 
 
-
     def add_module_imports(self, *imports):
         # Add import, and imported names to directory
         for statement in imports:
-            names = get_import_names_from_text(statement)
-            exec(statement, globals())
-            for name in names:
-                setattr(self.target_module, name, eval(name))
-            self.module_imports()[statement] = names
-            self.module_directory()['Module Imports'][statement] = names
+            for name, value in import_pseudonymously(statement).items():
+                pseudo_imported_names[f"{self.target_module.__name__}.{self.target_class.__name__}"][name] = value
+            self.module_imports()[statement] = get_import_names_from_text(statement)
+            self.module_directory()['Module Imports'][statement] = get_import_names_from_text(statement)
         self.__save_module_directory__()
         return self
-
 
 
 
@@ -1024,6 +1046,19 @@ class class_developer:
     def get_init(self): return self.get_method('__init__')
 
 
+    def add_pseudo_imported_names(self, text):
+        for name in (
+                set(self.module_attributes().keys())
+                .union(set(self.module_functions().keys()))
+                .union(self.module_imported_names())
+                .union(set(self.module_classes().keys()))
+                     ):
+            text = re.sub(
+                pattern = fr"(?<=[^\w\.]){name}(?=[^\w])", 
+                repl = f"pseudo_imported_names['{self.target_module.__name__}.{self.target_class.__name__}']['{name}']",
+                string = text
+                          )
+        return text
 
 
     def get_method(self, method_name, return_text=False, print_method=True, return_path=False):
@@ -1097,8 +1132,6 @@ class class_developer:
     def get_str(self): return self.get_method('__str__')
 
 
-
-
     def commit_method(self, unbound_method, group_name=None, method_name=None, method_text=None):
         if method_name==None: 
             method_name = unbound_method.__name__
@@ -1121,12 +1154,6 @@ class class_developer:
         # Write to file
         with open(os.path.join(self.__class_root__, f"{method_name}.method"), 'w') as flasdfkjerkjas:
             flasdfkjerkjas.write(method_text)
-        # bring into module environment
-        exec(method_text, globals(), locals())
-        # set method to class and instances of class
-        setattr(self.target_class, method_name, eval(method_name))
-        for key, value in self.instances().items():
-            setattr(value, method_name, types.MethodType(eval(method_name), value))
         # remove from directory
         if old_path != []:
             group_in_list = __extract_from_path_by_tag__(old_path, 'method_group')
@@ -1135,12 +1162,20 @@ class class_developer:
         # add to directory
         self.class_directory()[method_name] = method_text
         self.__save_module_directory__()
-        # move to group
+            # move to group
         if group_name != None:
             if group_name in self.method_groups():
                 self.add_to_method_group(group_name, method_name)
             else:
                 self.add_method_group(group_name, method_name)
+        # alter text for pseudonymous names
+        method_text = self.add_pseudo_imported_names(method_text)
+        exec(method_text, globals(), locals())
+        # set method to class and instances of class
+        setattr(self.target_class, method_name, eval(method_name))
+        for key, value in self.instances().items():
+            setattr(value, method_name, types.MethodType(eval(method_name), value))
+
         return self
 
 
@@ -1279,6 +1314,7 @@ class class_developer:
             self.__write_module_cascading_directories__()
         elif new == True:
             self.__write_module_cascading_directories__()
+        self.construct_pseudo_imported_names()
 
 
 
@@ -1867,3 +1903,28 @@ class triple_quote_tracker:
             self.prev_line_hanging = True
         return self.next().check_line()
 
+
+
+#  +---------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+#  |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+#  |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+#  |                                       888           d8b                                    888                888                                                   |
+#  |                                       888           Y8P                                    888                888                                                   |
+#  |                                       888                                                  888                888                                                   |
+#  |  88888b. .d8888b  .d88b. 888  888 .d88888 .d88b.    88888888b.d88b. 88888b.  .d88b. 888d888888888 .d88b.  .d88888   88888b.  8888b. 88888b.d88b.  .d88b. .d8888b    |
+#  |  888 "88b88K     d8P  Y8b888  888d88" 888d88""88b   888888 "888 "88b888 "88bd88""88b888P"  888   d8P  Y8bd88" 888   888 "88b    "88b888 "888 "88bd8P  Y8b88K        |
+#  |  888  888"Y8888b.88888888888  888888  888888  888   888888  888  888888  888888  888888    888   88888888888  888   888  888.d888888888  888  88888888888"Y8888b.   |
+#  |  888 d88P     X88Y8b.    Y88b 888Y88b 888Y88..88P   888888  888  888888 d88PY88..88P888    Y88b. Y8b.    Y88b 888   888  888888  888888  888  888Y8b.         X88   |
+#  |  88888P"  88888P' "Y8888  "Y88888 "Y88888 "Y88P"    888888  888  88888888P"  "Y88P" 888     "Y888 "Y8888  "Y88888   888  888"Y888888888  888  888 "Y8888  88888P'   |
+#  |  888                                                                888                                                                                             |
+#  |  888                                                                888                                                                                             |
+#  |  888                                                                888                                                                                             |
+#  |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+#  |---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+#  +---------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+
+class __pseudo_imported_names____________:
+
+    def _________why_________():
+        print("Because I'm not actually defining anything in target_module namespace. \nSo this is a pretend namespace holding that namespaces things")
