@@ -9,7 +9,7 @@ After saving this code somewhere on your python PATH, you will need to change th
 - src_package_root
 
 While I hope to automate that as well at some point, I haven't yet.
-These are the locations where "package-developer" will be manipulating files, so put this somwehere where you don't already have a bunch of important things.
+These are the locations where "package-developer" will be manipulating files, so put this somewhere you don't already have a bunch of important things.
 Put is somewhere new.
 
 This is still considered an unstable version.
